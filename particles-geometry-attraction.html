@@ -86,6 +86,10 @@
 			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
+			console.log( 'Three.js version:', THREE.REVISION );
+			console.log( 'THREE imported:', THREE );
+			console.log( 'SpriteNodeMaterial available:', THREE.SpriteNodeMaterial );
+
 			let camera, scene, renderer, controls, updateCompute, geometryMesh, geometryVertices, geometryNormals;
 
 			init();
@@ -94,8 +98,10 @@
 
 				try {
 
-				camera = new THREE.PerspectiveCamera( 25, window.innerWidth / window.innerHeight, 0.1, 100 );
+				camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 1000 );
 				camera.position.set( 3, 5, 8 );
+				camera.lookAt( 0, 0, 0 );
+				console.log( 'Camera position:', camera.position );
 
 				scene = new THREE.Scene();
 
@@ -118,6 +124,8 @@
 				document.body.appendChild( renderer.domElement );
 
 				await renderer.init();
+				console.log( 'WebGPU renderer initialized:', renderer );
+				console.log( 'Renderer info:', renderer.info );
 
 				controls = new OrbitControls( camera, renderer.domElement );
 				controls.enableDamping = true;
@@ -184,7 +192,11 @@
 
 				// particles
 				const count = Math.pow( 2, 18 );
-				const material = new THREE.SpriteNodeMaterial( { blending: THREE.AdditiveBlending, depthWrite: false } );
+				const material = new THREE.SpriteNodeMaterial( { 
+					blending: THREE.AdditiveBlending, 
+					depthWrite: false,
+					transparent: true
+				} );
 
 				const geometryMass = uniform( Number( `1e${7}` ) );
 				const particleGlobalMass = uniform( Number( `1e${4}` ) );
@@ -193,12 +205,14 @@
 				const maxSpeed = uniform( 8 );
 				const gravityConstant = 6.67e-11;
 				const velocityDamping = uniform( 0.1 );
-				const scale = uniform( 0.008 );
+				const scale = uniform( 0.05 ); // Increased from 0.008 to 0.05 for visibility
 				const boundHalfExtent = uniform( 8 );
 				const colorA = uniform( color( '#5900ff' ) );
 				const colorB = uniform( color( '#ffa575' ) );
 				const attractionStrength = uniform( 1.0 );
 				const surfaceDistance = uniform( 0.5 ); // Preferred distance from surface
+				
+				console.log( 'Initializing', count, 'particles' );
 
 				const positionBuffer = instancedArray( count, 'vec3' );
 				const velocityBuffer = instancedArray( count, 'vec3' );
@@ -221,7 +235,7 @@
 					const position = positionBuffer.element( instanceIndex );
 					const velocity = velocityBuffer.element( instanceIndex );
 
-					// Initialize particles in a sphere around the geometry
+						// Initialize particles in a sphere around the geometry
 					// Use deterministic hash based on instanceIndex instead of Math.random()
 					const seed1 = hash( instanceIndex.mul( uint( 7919 ) ) );
 					const seed2 = hash( instanceIndex.mul( uint( 7829 ) ) );
@@ -229,7 +243,7 @@
 					
 					const phi = seed1.mul( PI ).mul( 2 );
 					const theta = seed2.mul( PI );
-					const radius = seed3.mul( 3 ).add( 2 );
+					const radius = seed3.mul( 4 ).add( 1.5 ); // Particles start at radius 1.5-5.5
 					const basePosition = sphericalToVec3( phi, theta ).mul( radius );
 					position.assign( basePosition );
 
@@ -237,7 +251,7 @@
 					const seed5 = hash( instanceIndex.mul( uint( 6947 ) ) );
 					const phiVel = seed4.mul( PI ).mul( 2 );
 					const thetaVel = seed5.mul( PI );
-					const baseVelocity = sphericalToVec3( phiVel, thetaVel ).mul( 0.05 );
+					const baseVelocity = sphericalToVec3( phiVel, thetaVel ).mul( 0.1 ); // Increased initial velocity
 					velocity.assign( baseVelocity );
 
 				} );
@@ -246,7 +260,9 @@
 
 				const reset = () => {
 
+					console.log( 'Resetting particles...' );
 					renderer.compute( initCompute );
+					console.log( 'Particles reset complete' );
 
 				};
 
@@ -352,6 +368,9 @@
 				const particleGeometry = new THREE.PlaneGeometry( 1, 1 );
 				const mesh = new THREE.InstancedMesh( particleGeometry, material, count );
 				scene.add( mesh );
+				
+				console.log( 'Particle mesh added to scene', mesh );
+				console.log( 'Scene children:', scene.children.length );
 
 				// debug
 				const gui = renderer.inspector.createParameters( 'Parameters' );
@@ -392,12 +411,20 @@
 
 			}
 
+			let frameCount = 0;
 			async function animate() {
 
 				controls.update();
 
 				renderer.compute( updateCompute );
 				renderer.render( scene, camera );
+				
+				// Debug log every 60 frames
+				if ( frameCount === 0 ) {
+					console.log( 'Animation loop running, frame', frameCount );
+				}
+				frameCount++;
+				if ( frameCount > 60 ) frameCount = 0;
 
 			}
 

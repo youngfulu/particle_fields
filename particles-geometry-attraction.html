@@ -70,10 +70,10 @@
 		<script type="importmap">
 			{
 				"imports": {
-					"three": "https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js",
-					"three/webgpu": "https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.webgpu.js",
-					"three/tsl": "https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.tsl.js",
-					"three/addons/": "https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/"
+					"three": "https://unpkg.com/three@0.168.0/build/three.module.js",
+					"three/webgpu": "https://unpkg.com/three@0.168.0/build/three.webgpu.js",
+					"three/tsl": "https://unpkg.com/three@0.168.0/build/three.tsl.js",
+					"three/addons/": "https://unpkg.com/three@0.168.0/examples/jsm/"
 				}
 			}
 		</script>
@@ -91,6 +91,8 @@
 			init();
 
 			async function init() {
+
+				try {
 
 				camera = new THREE.PerspectiveCamera( 25, window.innerWidth / window.innerHeight, 0.1, 100 );
 				camera.position.set( 3, 5, 8 );
@@ -155,11 +157,14 @@
 				geometryNormals = uniformArray( [] );
 
 				// Sample vertices from the geometry (we'll use a subset for performance)
-				const sampleStep = Math.max( 1, Math.floor( vertexCount / 500 ) ); // Sample up to 500 vertices
+				const maxSamples = 500;
+				const sampleStep = Math.max( 1, Math.floor( vertexCount / maxSamples ) ); // Sample up to 500 vertices
 				const sampledVertices = [];
 				const sampledNormals = [];
 
 				for ( let i = 0; i < vertexCount; i += sampleStep ) {
+					if ( sampledVertices.length >= maxSamples ) break;
+					
 					const x = positionAttribute.getX( i );
 					const y = positionAttribute.getY( i );
 					const z = positionAttribute.getZ( i );
@@ -170,6 +175,8 @@
 					const nz = normalAttribute.getZ( i );
 					sampledNormals.push( new THREE.Vector3( nx, ny, nz ) );
 				}
+
+				console.log( 'Sampled', sampledVertices.length, 'vertices from geometry' );
 
 				geometryVertices.array = sampledVertices;
 				geometryNormals.array = sampledNormals;
@@ -215,14 +222,21 @@
 					const velocity = velocityBuffer.element( instanceIndex );
 
 					// Initialize particles in a sphere around the geometry
-					const phi = hash( instanceIndex.add( uint( Math.random() * 0xffffff ) ) ).mul( PI ).mul( 2 );
-					const theta = hash( instanceIndex.add( uint( Math.random() * 0xffffff ) ) ).mul( PI );
-					const radius = hash( instanceIndex.add( uint( Math.random() * 0xffffff ) ) ).mul( 3 ).add( 2 );
+					// Use deterministic hash based on instanceIndex instead of Math.random()
+					const seed1 = hash( instanceIndex.mul( uint( 7919 ) ) );
+					const seed2 = hash( instanceIndex.mul( uint( 7829 ) ) );
+					const seed3 = hash( instanceIndex.mul( uint( 7541 ) ) );
+					
+					const phi = seed1.mul( PI ).mul( 2 );
+					const theta = seed2.mul( PI );
+					const radius = seed3.mul( 3 ).add( 2 );
 					const basePosition = sphericalToVec3( phi, theta ).mul( radius );
 					position.assign( basePosition );
 
-					const phiVel = hash( instanceIndex.add( uint( Math.random() * 0xffffff ) ) ).mul( PI ).mul( 2 );
-					const thetaVel = hash( instanceIndex.add( uint( Math.random() * 0xffffff ) ) ).mul( PI );
+					const seed4 = hash( instanceIndex.mul( uint( 7127 ) ) );
+					const seed5 = hash( instanceIndex.mul( uint( 6947 ) ) );
+					const phiVel = seed4.mul( PI ).mul( 2 );
+					const thetaVel = seed5.mul( PI );
 					const baseVelocity = sphericalToVec3( phiVel, thetaVel ).mul( 0.05 );
 					velocity.assign( baseVelocity );
 
@@ -239,10 +253,10 @@
 				reset();
 
 				// update compute
-				const particleMassMultiplier = hash( instanceIndex.add( uint( Math.random() * 0xffffff ) ) ).remap( 0.25, 1 ).toVar();
-				const particleMass = particleMassMultiplier.mul( particleGlobalMass ).toVar();
-
 				const update = Fn( () => {
+					
+					const particleMassMultiplier = hash( instanceIndex.mul( uint( 8677 ) ) ).remap( 0.25, 1 ).toVar();
+					const particleMass = particleMassMultiplier.mul( particleGlobalMass ).toVar();
 
 					const delta = float( 1 / 60 ).mul( timeScale ).toVar();
 					const position = positionBuffer.element( instanceIndex );
@@ -328,7 +342,11 @@
 
 				} )();
 
-				material.scaleNode = particleMassMultiplier.mul( scale );
+				// Scale node with variation per particle
+				material.scaleNode = Fn( () => {
+					const particleScale = hash( instanceIndex.mul( uint( 8677 ) ) ).remap( 0.5, 1.0 );
+					return scale.mul( particleScale );
+				} )();
 
 				// mesh
 				const particleGeometry = new THREE.PlaneGeometry( 1, 1 );
@@ -355,6 +373,13 @@
 				} );
 				
 				gui.add( { reset }, 'reset' );
+
+				} catch ( error ) {
+
+					console.error( 'Error initializing:', error );
+					document.body.innerHTML += '<div style="color: white; padding: 20px;">Error: ' + error.message + '</div>';
+
+				}
 
 			}
 
